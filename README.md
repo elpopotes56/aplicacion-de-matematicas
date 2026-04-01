@@ -120,4 +120,4 @@ Este proyecto muestra trabajo full stack con enfoque en producto:
 
 ## Repository
 
-- GitHub: `https://github.com/elpopotes56/aplicacion-de-matematicas`
+- GitHub: `https://github.com/elpopotes56/rubidium`
