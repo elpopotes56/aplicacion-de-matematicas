@@ -20,7 +20,9 @@ COPY backend/ .
 RUN npm run build
 
 # Expose the port
-# Let Railway assign the PORT dynamically via env var
+# Force Railway to properly route traffic
+ENV PORT=4000
+EXPOSE 4000
 
 # Start the server and ensure DB is migrated
 CMD ["node", "dist/index.js"]

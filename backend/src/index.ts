@@ -35,6 +35,6 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
 });
 
 const port = env.PORT;
-app.listen(port, "0.0.0.0", () => {
+app.listen(port, () => {
   console.log(`[startup] API running on http://0.0.0.0:${port}`);
 });
