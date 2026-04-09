@@ -52,18 +52,19 @@ historyRouter.get("/me", async (req, res) => {
     });
   }
 
-  const profile = await prisma.profile.upsert({
-    where: { id: userId },
-    update: {
-      email
-    },
-    create: {
-      id: userId,
-      email
-    }
-  });
+  try {
+    const profile = await prisma.profile.upsert({
+      where: { id: userId },
+      update: { email },
+      create: { id: userId, email }
+    });
 
-  return res.json({ data: profile });
+    return res.json({ data: profile });
+  } catch (error) {
+    console.error("[history/me] Error:", error);
+    const message = error instanceof Error ? error.message : "Unexpected error.";
+    return res.status(500).json({ error: message });
+  }
 });
 
 historyRouter.get("/problems", async (req, res) => {
@@ -78,22 +79,28 @@ historyRouter.get("/problems", async (req, res) => {
     return res.json({ data: [], demoMode: true });
   }
 
-  const problems = await prisma.problem.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-    include: {
-      steps: {
-        orderBy: { stepNumber: "asc" }
-      },
-      topic: true,
-      voiceSessions: {
-        orderBy: { startedAt: "desc" },
-        take: 1
+  try {
+    const problems = await prisma.problem.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      include: {
+        steps: {
+          orderBy: { stepNumber: "asc" }
+        },
+        topic: true,
+        voiceSessions: {
+          orderBy: { startedAt: "desc" },
+          take: 1
+        }
       }
-    }
-  });
+    });
 
-  res.json({ data: problems });
+    res.json({ data: problems });
+  } catch (error) {
+    console.error("[history/problems] Error:", error);
+    const message = error instanceof Error ? error.message : "Unexpected error.";
+    return res.status(500).json({ error: message });
+  }
 });
 
 historyRouter.get("/problems/:problemId", async (req, res) => {
@@ -108,32 +115,38 @@ historyRouter.get("/problems/:problemId", async (req, res) => {
     return res.status(404).json({ error: "Problem not found in demo mode." });
   }
 
-  const problem = await prisma.problem.findFirst({
-    where: {
-      id: req.params.problemId,
-      userId
-    },
-    include: {
-      steps: {
-        orderBy: { stepNumber: "asc" }
+  try {
+    const problem = await prisma.problem.findFirst({
+      where: {
+        id: req.params.problemId,
+        userId
       },
-      topic: true,
-      voiceSessions: {
-        include: {
-          messages: {
-            orderBy: { createdAt: "asc" }
-          }
+      include: {
+        steps: {
+          orderBy: { stepNumber: "asc" }
         },
-        orderBy: { startedAt: "desc" }
+        topic: true,
+        voiceSessions: {
+          include: {
+            messages: {
+              orderBy: { createdAt: "asc" }
+            }
+          },
+          orderBy: { startedAt: "desc" }
+        }
       }
+    });
+
+    if (!problem) {
+      return res.status(404).json({ error: "Problem not found." });
     }
-  });
 
-  if (!problem) {
-    return res.status(404).json({ error: "Problem not found." });
+    return res.json({ data: problem });
+  } catch (error) {
+    console.error("[history/problems/:id] Error:", error);
+    const message = error instanceof Error ? error.message : "Unexpected error.";
+    return res.status(500).json({ error: message });
   }
-
-  return res.json({ data: problem });
 });
 
 historyRouter.post("/problems", async (req, res) => {
@@ -144,82 +157,83 @@ historyRouter.post("/problems", async (req, res) => {
     return res.status(401).json({ error: "Unauthorized." });
   }
 
-  const payload = createProblemSchema.parse(req.body);
+  try {
+    const payload = createProblemSchema.parse(req.body);
 
-  if (isDemoUser(email)) {
-    return res.status(201).json({
-      data: {
-        id: crypto.randomUUID(),
-        userId,
-        title: payload.title ?? "Consulta demo",
-        prompt: payload.prompt,
-        normalizedText: payload.normalizedText ?? null,
-        topicId: payload.topicId ?? null,
-        inputType: payload.inputType,
-        status: payload.status,
-        finalAnswer: payload.finalAnswer ?? null,
-        explanation: payload.explanation ?? null,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        steps: payload.steps.map((step) => ({
+    if (isDemoUser(email)) {
+      return res.status(201).json({
+        data: {
           id: crypto.randomUUID(),
-          stepNumber: step.stepNumber,
-          title: step.title ?? null,
-          explanation: step.explanation,
-          latex: step.latex ?? null,
-          createdAt: new Date().toISOString()
-        })),
-        demoMode: true
+          userId,
+          title: payload.title ?? "Consulta demo",
+          prompt: payload.prompt,
+          normalizedText: payload.normalizedText ?? null,
+          topicId: payload.topicId ?? null,
+          inputType: payload.inputType,
+          status: payload.status,
+          finalAnswer: payload.finalAnswer ?? null,
+          explanation: payload.explanation ?? null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          steps: payload.steps.map((step) => ({
+            id: crypto.randomUUID(),
+            stepNumber: step.stepNumber,
+            title: step.title ?? null,
+            explanation: step.explanation,
+            latex: step.latex ?? null,
+            createdAt: new Date().toISOString()
+          })),
+          demoMode: true
+        }
+      });
+    }
+
+    await prisma.profile.upsert({
+      where: { id: userId },
+      update: { email },
+      create: { id: userId, email }
+    });
+
+    const problem = await prisma.problem.create({
+      data: {
+        userId,
+        title: payload.title,
+        prompt: payload.prompt,
+        normalizedText: payload.normalizedText,
+        topicId: payload.topicId,
+        inputType: payload.inputType,
+        finalAnswer: payload.finalAnswer,
+        explanation: payload.explanation,
+        status: payload.status,
+        steps: payload.steps.length
+          ? {
+              create: payload.steps.map((step) => ({
+                user: {
+                  connect: {
+                    id: userId
+                  }
+                },
+                stepNumber: step.stepNumber,
+                title: step.title,
+                explanation: step.explanation,
+                latex: step.latex
+              }))
+            }
+          : undefined
+      },
+      include: {
+        steps: {
+          orderBy: { stepNumber: "asc" }
+        }
       }
     });
+
+    res.status(201).json({ data: problem });
+  } catch (error) {
+    console.error("[history/problems POST] Error:", error);
+    const message = error instanceof Error ? error.message : "Unexpected error.";
+    return res.status(500).json({ error: message });
   }
-
-  await prisma.profile.upsert({
-    where: { id: userId },
-    update: {
-      email
-    },
-    create: {
-      id: userId,
-      email
-    }
-  });
-
-  const problem = await prisma.problem.create({
-    data: {
-      userId,
-      title: payload.title,
-      prompt: payload.prompt,
-      normalizedText: payload.normalizedText,
-      topicId: payload.topicId,
-      inputType: payload.inputType,
-      finalAnswer: payload.finalAnswer,
-      explanation: payload.explanation,
-      status: payload.status,
-      steps: payload.steps.length
-        ? {
-            create: payload.steps.map((step) => ({
-              user: {
-                connect: {
-                  id: userId
-                }
-              },
-              stepNumber: step.stepNumber,
-              title: step.title,
-              explanation: step.explanation,
-              latex: step.latex
-            }))
-          }
-        : undefined
-    },
-    include: {
-      steps: {
-        orderBy: { stepNumber: "asc" }
-      }
-    }
-  });
-
-  res.status(201).json({ data: problem });
 });
 
 historyRouter.delete("/problems/:problemId", async (req, res) => {
@@ -231,8 +245,6 @@ historyRouter.delete("/problems/:problemId", async (req, res) => {
   }
 
   if (isDemoUser(email)) {
-    // In demo mode, history is kept only in frontend state.
-    // Returning success allows the mobile app to remove it from state.
     return res.json({ success: true, message: "Problem deleted from demo state." });
   }
 
@@ -254,7 +266,7 @@ historyRouter.delete("/problems/:problemId", async (req, res) => {
 
     return res.json({ success: true });
   } catch (error) {
-    console.error("Error deleting problem:", error);
+    console.error("[history/problems DELETE] Error:", error);
     return res.status(500).json({ error: "Failed to delete problem." });
   }
 });
