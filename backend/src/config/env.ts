@@ -11,4 +11,8 @@ const envSchema = z.object({
   DEMO_EMAIL: z.string().email().optional()
 });
 
-export const env = envSchema.parse(process.env);
+const cleanEnv = Object.fromEntries(
+  Object.entries(process.env).map(([k, v]) => [k, typeof v === "string" ? v.trim() : v])
+);
+
+export const env = envSchema.parse(cleanEnv);
